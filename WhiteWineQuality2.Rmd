@@ -1,0 +1,817 @@
+---
+output: html_document
+---
+Factors Affecting White Wine Quality by Caleb Sangwin
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+library(ggplot2)
+library(gridExtra)
+library(corrplot)
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Load_the_Data}
+# Load the Data
+wwq <- read.csv('wineQualityWhites.csv')
+wwq <- wwq[, c(2:13)] # Removing 'X' the column for observation ID.
+
+# Changing sulfur dioxide into g / dm^3 like the rest of the variables
+wwq$free.sulfur.dioxide <- wwq$free.sulfur.dioxide / 1000
+wwq$total.sulfur.dioxide <- wwq$total.sulfur.dioxide / 1000
+wwq$used.sulfur.dioxide <- wwq$total.sulfur.dioxide - wwq$free.sulfur.dioxide
+
+# Creating main code up here to keep next section tidy
+# Creating high and low quality wine datasets
+highquality <- subset(wwq, quality > 6)
+lowquality <- subset(wwq, quality < 6)
+
+# Storing summaries as variables
+all.data.summary <- summary(wwq) # dataset with all wines
+high.quality.summary <- summary(highquality) # dataset with wines rated 7+
+low.quality.summary <- summary(lowquality) # dataset with wines rated 5-
+# Removing {Min, 1st Q, Median, Mean, 3rd Q, Max} labels from the summary data
+# Unsure how to do this programmatically in R
+all.data.summary <- substr(all.data.summary, 9, 14) 
+high.quality.summary <- substr(high.quality.summary, 9, 14) 
+low.quality.summary <- substr(low.quality.summary, 9, 14) 
+# Names for rows and columns
+summaryrows <- c('Min', '1st Q', 'Median', 'Mean', '3rd Q', 'Max')
+summarycolumns <- c('Low Quality', 'All Wine', 'High Quality')
+# A function creating a table to show summary values across three datasets
+summarytable <- function(col_id) {
+  new.matrix <- matrix(c(low.quality.summary[,col_id],
+                         all.data.summary[,col_id],
+                         high.quality.summary[,col_id]), 
+                      ncol = 3)
+  colnames(new.matrix) <- summarycolumns
+  rownames(new.matrix) <- summaryrows
+  new.matrix
+}
+
+# Quick view of the Data Structure
+str(wwq)
+```
+
+> This data set on white wine quality has 4898 observations of 13 variables.
+Quality is the output observation and is the only integer in this dataset. The 
+rest of the variables are decimal point numbers. I want to see if quality can 
+be estimated based on any of these variables.
+
+# Univariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univariate_Plots_Quality}
+# Summary of quality
+print('Quality')
+summary(wwq$quality)
+
+# Number of high quality wines
+print('High Quality Wines')
+nrow(highquality) 
+
+# Number of low quality wines
+print('Low Quality Wines')
+nrow(lowquality) 
+
+# Histogram of quality of the whole dataset
+ggplot(aes(x = quality), data = wwq) + 
+  geom_bar()
+```
+
+> I grouped the wines rated 7 or greater and grouped the wines rated 5 or 
+lower. Close to 21% of the wines are high quality and 33% are low quality. I'm
+hoping to find similarities in these groups and compare them to each other
+and the dataset as a whole. The histogram showing the quality of the white 
+wines has a fairly normal distribution. 
+
+### Acidity
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Acidity_1}
+# Fixed Acidity Histogram and Box Plot
+fa.h <- ggplot(aes(x = fixed.acidity), data = wwq) + 
+  geom_histogram(binwidth = 0.1)
+fa.b <- ggplot(aes(x = "", y = fixed.acidity), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1)
+# Volatile Acidity Histogram and Box Plot
+va.h <- ggplot(aes(x = volatile.acidity), data = wwq) + 
+  geom_histogram(binwidth = 0.01)
+va.b <- ggplot(aes(x = "", y = volatile.acidity), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1)
+
+# Fixed Acidity Summary and Plots
+print('Fixed Acidity')
+summary(wwq$fixed.acidity)
+grid.arrange(fa.h, fa.b, ncol = 2)
+# Volatile Acidity Summary and Plots
+print('Volatile Acidity')
+summary(wwq$volatile.acidity)
+grid.arrange(va.h, va.b, ncol = 2)
+```
+
+> Both Fixed and Volatile Acidity have fairly normal distributions. Volatile
+Acidity has many more outliers, but both of these variales have small
+interquartile ranges. It's interesting that the IQR makes up about 10% of the
+range for both of these variables. This seems very low and speaks to the 
+variability in this dataset.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Acidity_2}
+# Citric Acid Histogram and Box Plot
+ca.h <- ggplot(aes(x = citric.acid), data = wwq) + 
+  geom_histogram(binwidth = 0.01) +
+  scale_x_continuous(limits = c(0, 1))
+ca.b <- ggplot(aes(x = "", y = citric.acid), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.05)
+# pH Histogram and Box Plot
+ph.h <- ggplot(aes(x = pH), data = wwq) + 
+  geom_histogram(binwidth = 0.01)
+ph.b <- ggplot(aes(x = "", y = pH), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1)
+
+# Citric Acid Summary and Plots
+print('Citric Acid')
+summary(wwq$citric.acid)
+grid.arrange(ca.h, ca.b, ncol = 2)
+# pH Summary and Plots
+print('pH')
+summary(wwq$pH)
+grid.arrange(ph.h, ph.b, ncol = 2)
+```
+
+> Citric Acid and pH again have fairly normal distributions with quite a few
+outliers. This time though Citric Acid has an IQR that makes up only 7% of
+the range while pH is closer to 17%. I wonder if high quality wines have
+values that fall within these small IQR's. 
+
+### Sulphates and Sulfur Dioxide
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Sulphates_and_Sulfur_Dioxide}
+# Sulphates Histogram and Box Plot
+su.h <- ggplot(aes(x = sulphates), data = wwq) + 
+  geom_histogram(binwidth = 0.01)
+su.b <- ggplot(aes(x = "", y = sulphates), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1)
+# Free Sulfur Dioxide Histogram and Box Plot
+# Limits and binwidth set to improve visual aid across three graphs
+fsd.h <- ggplot(aes(x = free.sulfur.dioxide), data = wwq) + 
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(limits = c(0, 0.3)) +
+  scale_y_continuous(limits = c(0, 170))
+fsd.b <- ggplot(aes(x = "", y = free.sulfur.dioxide), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.05) +
+  coord_cartesian(ylim = c(0, 0.3))
+# Used Sulfur Dioxide Histogram and Box Plot
+usd.h <- ggplot(aes(x = used.sulfur.dioxide), data = wwq) + 
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(limits = c(0, 0.3)) +
+  scale_y_continuous(limits = c(0, 170))
+usd.b <- ggplot(aes(x = "", y = used.sulfur.dioxide), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.05) +
+  coord_cartesian(ylim = c(0, 0.3))
+# Total Sulfur Dioxide Histogram and Box Plot
+tsd.h <- ggplot(aes(x = total.sulfur.dioxide), data = wwq) + 
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(limits = c(0, 0.3)) +
+  scale_y_continuous(limits = c(0, 170))
+tsd.b <- ggplot(aes(x = "", y = total.sulfur.dioxide), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.05) +
+  coord_cartesian(ylim = c(0, 0.3))
+
+# Sulphates Summary and Plots
+print('Sulphates')
+summary(wwq$sulphates)
+grid.arrange(su.h, su.b, ncol = 2)
+# Sulfur Dioxide Plots
+print('Sulfur Dioxide')
+grid.arrange(fsd.h, usd.h, tsd.h, ncol = 3)
+grid.arrange(fsd.b, usd.b, tsd.b, ncol = 3)
+# Sulfur Dioxide Summaries
+print('Free Sulfur Dioxide')
+summary(wwq$free.sulfur.dioxide)
+print('Used Sulfur Dioxide')
+summary(wwq$used.sulfur.dioxide)
+print('Total Sulfur Dioxide')
+summary(wwq$total.sulfur.dioxide)
+```
+
+> So far very little has stood out as abnormal in these variables. Sulphates
+and Sulfur Dioxide levels are no different, with normal distributions and a
+similar number of outliers compared to the other variables. Free Sulfur Dioxide
+is the only variable with a small IQR making up about 8% of the full range. The
+others have much larger IQR's. 
+
+### Chlorides, Sugar, Density, and Alcohol
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Chlorides_and_Sugar}
+# Chlorides Histogram and Box Plot
+ch.h <- ggplot(aes(x = chlorides), data = wwq) + 
+  geom_histogram(binwidth = 0.001) +
+  scale_x_continuous(limits = c(0, 0.1))
+ch.b <- ggplot(aes(x = "", y = chlorides), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.05)
+# Residual Sugar Histogram and Box Plot
+rs.h <- ggplot(aes(x = residual.sugar), data = wwq) + 
+  geom_histogram(binwidth = 0.2) +
+  scale_x_continuous(limits = c(0, 20))
+rs.b <- ggplot(aes(x = "", y = residual.sugar), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1) +
+  coord_cartesian(ylim = c(0, 20))
+
+# Chloride Summary and Plots
+print('Chlorides')
+summary(wwq$chlorides)
+grid.arrange(ch.h, ch.b, ncol = 2)
+# Residual Sugar Summary and Plots
+print('Residual Sugar')
+summary(wwq$residual.sugar)
+grid.arrange(rs.h, rs.b, ncol = 2)
+```
+
+> These two variables are much different. Chlorides has a fairly normal
+distribution with a bit of a positive skew. It has the smallest IQR when 
+compared to range at about 4%. Residual Sugar on the other hand is very
+positively skewed, but has a large amount of data at low levels. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Density_and_Alcohol}
+# Density Histogram and Box Plot
+de.h <- ggplot(aes(x = density), data = wwq) + 
+  geom_histogram(binwidth = 0.0002) +
+  scale_x_continuous(limits = c(0.987, 1.005))
+de.b <- ggplot(aes(x = "", y = density), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1) +
+  coord_cartesian(ylim = c(0.987, 1.005))
+# Alcohol Histogram and Box Plot
+al.h <- ggplot(aes(x = alcohol), data = wwq) + 
+  geom_histogram(binwidth = 0.1)
+al.b <- ggplot(aes(x = "", y = alcohol), data = wwq) +
+  geom_boxplot(color = 'darkred') +
+  geom_jitter(alpha = 0.1)
+
+# Density Summary and Plots
+print('Density')
+summary(wwq$density)
+grid.arrange(de.h, de.b, ncol = 2)
+# Alcohol Summary and Plots
+print('Alcohol')
+summary(wwq$alcohol)
+grid.arrange(al.h, al.b, ncol = 2)
+```
+
+> For these last two variables they are again distributed quite normally, with
+the exception that alcohol has a bit of a positive skew. Nothing else really 
+stands out.
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+> This dataset contains 4989 observations of 13 variables. All of the 12 
+input variables are decimal point numbers and the one output variable is
+an integer. With the exception of sugar, all of the variables are found in 
+very small quantities - less than 1 g / dm^3. 
+
+> Quality ranges from 3 to 9 with a median of 6 and a mean of 5.878. 
+
+### What is/are the main feature(s) of interest in your dataset?
+
+> The main feature of interest is our output variable - quality. The goal
+is to determine which is the measured variables affect the overall
+quality. The attribute details state that the output is based on sensory
+data which I assume to mean quality is based on taste and smell of the
+wine (more so than hangover level or overall price value). 
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+> After doing a little research to determine what affects the taste of wine,
+it appears that acidity and sulfur dioxide levels may be a good indicator.
+Acidity causes food and drinks to taste more zesty. Citric acid may add
+to the sweetness but fixed and volatile acidity will add more zest. During
+the fermentation process, maintaining appropriate oxygen levels is important
+as oxygen causes reactions in the other chemicals in the wine. This reaction
+causes the fruit in the wine to lose it's aroma. Sulfur Dioxide is added as an 
+antioxidant to help reduce reactions between molecules.
+
+> From what I saw above, Chlorides, Alcohol, and Sugar levels were the most
+different of all the variables. I think they would be good places to start. 
+
+### Did you create any new variables from existing variables in the dataset?
+
+> I created a variable for the used sulfur dioxide by taking the total
+sulfur dioxide and subtracting the free sulfur dioxide in each wine. I did 
+this because sulfur dioxide may be useful in determining quality, however
+I'm unsure whether available or used sulfur dioxide has more affect. 
+
+> I also changed the values for the sulfur dioxide variables so that they
+were measured in the same units as the rest of the variables. And I removed
+the variable 'X' which was just an observation ID. 
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+> None of the distributions jumped out as unusual. There are however a lot of
+outliers in nearly each variable. The only change I made was to create datasets 
+containing the best and worst quality wines. I think finding relationships 
+between wines of similar quality will be more appropriate than trying to 
+determine the same thing over an entire group full of outliers. 
+
+# Bivariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Correlation}
+# Storing correlation dataframe in variables to use in corrplot
+wwq.cor <- cor(wwq) 
+corrplot(wwq.cor, method = 'circle')
+```
+
+> Here is the correlation plot for White Wine. The most correlated
+variable with quality appears to be alcohol with a value of 0.43. This will be 
+a good start for our analysis. Alcohol also appears to be at least partially 
+correlated with sugar, chlorides, total sulfur dioxide, and density.
+
+> Density has two of the highest correlation values when compared to sugar and
+alcohol with values of 0.84 and -0.78 respectively. I think these two directly 
+affect the density of wine and won't be used towards the quality. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Quality_vs_Alcohol}
+# Histogram showing quality vs alcohol and Correlation
+ggplot(aes(x = quality, y = alcohol), data = wwq) +
+  geom_jitter(alpha = 0.25) +
+  geom_smooth(method = 'lm', se = FALSE)
+print('Correlation between Quality and Alcohol')
+cor(wwq$quality, wwq$alcohol)
+# Alcohol vs Quality Box Plot and Jitter
+ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = alcohol), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = alcohol), # High Quality Jitter
+              data = highquality, alpha = 0.1) + 
+  geom_boxplot(aes(x = "2 - All", y = alcohol), # All Data Box Plot
+               data = wwq, color = 'darkred') +
+  geom_jitter(aes(x = '2 - All', y = alcohol), # All Data Jitter
+              data = wwq, alpha = 0.1) + 
+  geom_boxplot(aes(x = "1 - Low", y = alcohol), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') +
+  geom_jitter(aes(x = '1 - Low', y = alcohol), # Low Quality Jitter
+              data = lowquality, alpha = 0.1) + 
+  xlab('Quality')
+
+# Alcohol vs Quality Summary
+alcohol.summary <- summarytable(11) # Won't work when called with name?
+print('alcohol')
+alcohol.summary
+```
+
+> The most correlated variable with quality is alcohol. I like using 
+geom_jitter with an alpha value because it's a little easier to understand 
+visually. There is definitely an upward trend seen between quality and
+alcohol. High quality wines generally have higher alcohol contents when
+compared to the low quality wines.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Density_vs_Alcohol/Sugar}
+# Residual Sugar vs Quality Box Plot and Jitter
+rs.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = residual.sugar), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = residual.sugar), # High Quality Jitter
+              data = highquality, alpha = 0.1) + 
+  geom_boxplot(aes(x = "2 - All", y = residual.sugar), # All Data Box Plot
+               data = wwq, color = 'darkred') + 
+  geom_jitter(aes(x = '2 - All', y = residual.sugar), # All Data Jitter
+              data = wwq, alpha = 0.1) + 
+  geom_boxplot(aes(x = "1 - Low", y = residual.sugar), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') + 
+  geom_jitter(aes(x = '1 - Low', y = residual.sugar), # Low Quality Jitter
+              data = lowquality, alpha = 0.1) + 
+  coord_cartesian(ylim = c(0, 20)) + 
+  xlab('Quality')
+# Density vs Quality Box Plot and Jitter
+de.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = density), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = density), # High Quality Jitter
+              data = highquality, alpha = 0.1) + 
+  geom_boxplot(aes(x = "2 - All", y = density), # All Data Box Plot
+               data = wwq, color = 'darkred') +
+  geom_jitter(aes(x = '2 - All', y = density), # All Data Jitter
+              data = wwq, alpha = 0.1) + 
+  geom_boxplot(aes(x = "1 - Low", y = density), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') +
+  geom_jitter(aes(x = '1 - Low', y = density), # Low Quality Jitter
+              data = lowquality, alpha = 0.1) + 
+  coord_cartesian(ylim = c(0.989, 1)) + 
+  xlab('Quality')
+# Density vs Residual Sugar
+d.rs <- ggplot(aes(x = density, y = residual.sugar), data = wwq) +
+  geom_point(alpha = 1/10) +
+  coord_cartesian(xlim = c(0.985, 1.005), ylim = c(0, 30)) +
+  geom_smooth(method = 'lm', se = FALSE)
+# Density vs Alcohol
+d.al <- ggplot(aes(x = density, y = alcohol), data = wwq) +
+  geom_point(alpha = 1/10) +
+  coord_cartesian(xlim = c(0.985, 1.005), ylim = c(7.5, 15)) +
+  geom_smooth(method = 'lm', se = FALSE)
+# Density and Sugar vs Quality Summaries
+density.summary <- summarytable(8) # Won't work when called with name?
+sugar.summary <- summarytable('residual.sugar')
+
+# Density and Sugar vs Quality Box Plots and Summaries
+grid.arrange(rs.b, de.b, ncol = 2)
+print('Sugar')
+sugar.summary
+print('Density')
+density.summary
+# Sugar and Alcohol vs Density Plots and Correlation
+grid.arrange(d.rs, d.al, ncol = 2)
+print('Correlation between Density and Sugar')
+cor(wwq$density, wwq$residual.sugar)
+print('Correlation between Density and Alcohol')
+cor(wwq$density, wwq$alcohol)
+```
+
+> The box plots clearly show the change of a few key measurements between high
+and low quality wine. High quality wines generally have a smaller IQR and range.
+This is similar to what was found before when looking at single variables. 
+
+> Since density is so heavily correlated to alcohol and sugar, it won't be used
+to determine quality. Sugar and alcohol are qualities that are more likely to 
+have a direct affect. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Alcohol_vs_Chlorides/TSD/Sugar}
+# Chlorides vs Quality Box Plot and Jitter
+ch.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = chlorides), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = chlorides), # High Quality Jitter
+              data = highquality, alpha = 0.05) + 
+  geom_boxplot(aes(x = "2 - All", y = chlorides), # All Data Box Plot
+               data = wwq, color = 'darkred') + 
+  geom_jitter(aes(x = '2 - All', y = chlorides), # All Data Jitter
+              data = wwq, alpha = 0.05) + 
+  geom_boxplot(aes(x = "1 - Low", y = chlorides), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') + 
+  geom_jitter(aes(x = '1 - Low', y = chlorides), # Low Quality Jitter
+              data = lowquality, alpha = 0.05) + 
+  coord_cartesian(ylim = c(0, 0.1)) + 
+  xlab('Quality')
+# Total Sulfur Dioxide vs Quality Box Plot and Jitter
+tsd.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = total.sulfur.dioxide), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = total.sulfur.dioxide), # High Quality Jitter
+              data = highquality, alpha = 0.05) + 
+  geom_boxplot(aes(x = "2 - All", y = total.sulfur.dioxide), # All Data Box Plot
+               data = wwq, color = 'darkred') +
+  geom_jitter(aes(x = '2 - All', y = total.sulfur.dioxide), # All Data Jitter
+              data = wwq, alpha = 0.05) + 
+  geom_boxplot(aes(x = "1 - Low", y = total.sulfur.dioxide), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') +
+  geom_jitter(aes(x = '1 - Low', y = total.sulfur.dioxide), # Low Quality Jitter
+              data = lowquality, alpha = 0.05) + 
+  coord_cartesian(ylim = c(0, 0.3)) + 
+  xlab('Quality')
+# Residual Sugar vs Quality Box Plot and Jitter
+rs.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = residual.sugar), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = residual.sugar), # High Quality Jitter
+              data = highquality, alpha = 0.05) + 
+  geom_boxplot(aes(x = "2 - All", y = residual.sugar), # All Data Box Plot
+               data = wwq, color = 'darkred') +
+  geom_jitter(aes(x = '2 - All', y = residual.sugar), # All Data Jitter
+              data = wwq, alpha = 0.05) + 
+  geom_boxplot(aes(x = "1 - Low", y = residual.sugar), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') +
+  geom_jitter(aes(x = '1 - Low', y = residual.sugar), # Low Quality Jitter
+              data = lowquality, alpha = 0.05) + 
+  coord_cartesian(ylim = c(0, 20)) + 
+  xlab('Quality')
+# Alcohol vs Chlorides Plot
+al.ch <- ggplot(aes(x = alcohol, y = chlorides), data = wwq) +
+  geom_point(alpha = 0.1) +
+  coord_cartesian(ylim = c(0, 0.1)) +
+  geom_smooth(method = 'lm', se = FALSE)
+# Alcohol vs Total Sulfur Dioxide Plot
+al.tsd <- ggplot(aes(x = alcohol, y = total.sulfur.dioxide), data = wwq) +
+  geom_point(alpha = 0.1) +
+  coord_cartesian(ylim = c(0, 0.3)) +
+  geom_smooth(method = 'lm', se = FALSE)
+# Alcohol vs Residual Sugar Plot
+al.rs <- ggplot(aes(x = alcohol, y = residual.sugar), data = wwq) +
+  geom_point(alpha = 0.1) +
+  coord_cartesian(ylim = c(0, 20)) +
+  geom_smooth(method = 'lm', se = FALSE)
+# Chlorides and Total Sulfur Dioxide Summaries
+chlorides.summary <- summarytable(5) # Won't work when called with name?
+tsd.summary <- summarytable('total.sulfur.dioxide')
+
+# Chlorides Plots and Summary
+grid.arrange(ch.b, al.ch, ncol = 2)
+print('Chlorides')
+chlorides.summary
+print('Correlation')
+cor(wwq$alcohol, wwq$chlorides)
+# Total Sulfur Dioxide Plots and Summary
+grid.arrange(tsd.b, al.tsd, ncol = 2)
+print('Total Sulfur Dioxide')
+tsd.summary
+print('Correlation')
+cor(wwq$alcohol, wwq$total.sulfur.dioxide)
+# Residual Sugar Plots
+grid.arrange(rs.b, al.rs, ncol = 2)
+print('Correlation')
+cor(wwq$alcohol, wwq$residual.sugar)
+```
+
+> Chlorides in high and low quality wine actually have the same sized IQR but
+low quality wine has many more outliers. A specific chloride range isn't
+enough to determine quality but it definitely plays a role. We already saw
+that high quality wines tend to have a high alcohol content, making the
+correlation between chlorides and alcohol very helpful. 
+
+> The same can be said for the total sulfur dioxide and sugar plots, but they
+have slightly less change between quality levels. Either way it appears that 
+these variables are the most likely to affect the quality level.
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+> The biggest factor I've seen so far in determining quality level is alcohol.
+I didn't expect wine quality to be most correlated with alcohol. Comparing
+alcohol against other variables is offering insights into secondary or tertiary
+variables that affect quality. Other than alcohol, the three most useful
+variables are chlorides, total sulfur dioxide, and sugar. Seeing the range in
+the box plots change between quality levels was very useful in selecting
+useful variables.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+> I checked to make sure that density levels were caused by other variiables
+more than quality. Density is indeed very correlated with both sugar and 
+alcohol. This was important to check because density was one of the more
+correlated variables with quality when looking at the whole dataset.
+
+### What was the strongest relationship you found?
+
+> The strongest relationship is definitely between alcohol and chlorides,
+followed by alcohol and total sulfur dioxide. I think I'll look closer at these
+variables to see what else I can determine. 
+
+# Multivariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, High_and_Low_Quality_Corr_Plot}
+# Storing correlation dataframe in variables to use in corrplot
+hq.cor <- cor(highquality) 
+lq.cor <- cor(lowquality)
+# Easy to compare correlation grids
+print('High Quality')
+corrplot(hq.cor, method = 'circle')
+print('Low Quality')
+corrplot(lq.cor, method = 'circle')
+```
+
+> Looking at the high quality correlation plot, there are three major 
+differences I see when comparing against alcohol. Fixed Acidity, Volatile 
+Acidity, and Chlorides all increase greatly. 
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Alcohol_vs_Chlorides_vs_Quality}
+# Alcohol vs Chlorides vs Quality
+ggplot() +
+  geom_point(aes(x = alcohol, y = chlorides, color = 'High Quality'), 
+             data = highquality, alpha = 0.33) +
+  geom_point(aes(x = alcohol, y = chlorides, color = 'Low Quality'), 
+             data = lowquality, alpha = 0.21) +
+  scale_color_manual("",
+                     values = c("High Quality"="darkorange4", 
+                                "Low Quality"="blue")) +
+  geom_smooth(aes(x = alcohol, y = chlorides, color = 'High Quality'),
+              data = highquality, se = FALSE) +
+  geom_smooth(aes(x = alcohol, y = chlorides, color = 'Low Quality'),
+              data = lowquality, se = FALSE) +
+  coord_cartesian(ylim = c(0.0125, 0.15))
+# Correlation between Alcohol and Chlorides in High Quality Wine
+print('Correlation between Chlorides and Alcohol in High Quality Wine')
+cor(highquality$chlorides, highquality$alcohol)
+# Correlation between Alcohol and Chlorides in Low Quality Wine
+print('Correlation between Chlorides and Alcohol in Low Quality Wine')
+cor(lowquality$chlorides, lowquality$alcohol)
+```
+
+> Alcohol and Chlorides continue to show themselves as the strongest
+pairs of factors in discerning quality level. The curve representing the
+high quality wine becomes more horizontal, strengthening the idea that there
+is a strict range for the variables in high quality wine.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Alcohol_vs_TSD_and_Sugar}
+# Alcohol vs Total Sulfur Dioxide vs Quality
+# Alpha levels set based on sample sizes (low quality is 33% of total wine)
+# This allows for a more accurate visual queue in the plots
+al.tsd <- ggplot() +
+  geom_point(aes(x = alcohol, y = total.sulfur.dioxide, color = 'High Quality'), 
+             data = highquality, alpha = 0.33) +
+  geom_point(aes(x = alcohol, y = total.sulfur.dioxide, color = 'Low Quality'), 
+             data = lowquality, alpha = 0.21) +
+  scale_color_manual("",
+                     values = c("High Quality"="darkorange4", 
+                                "Low Quality"="blue")) +
+  geom_smooth(aes(x = alcohol, y = total.sulfur.dioxide, 
+                  color = 'High Quality'),
+              data = highquality, se = FALSE) +
+  geom_smooth(aes(x = alcohol, y = total.sulfur.dioxide, 
+                  color = 'Low Quality'),
+              data = lowquality, se = FALSE) +
+  coord_cartesian(ylim = c(0, 0.4))
+# Alcohol vs Residual Sugar vs Quality
+al.rs <- ggplot() +
+  geom_point(aes(x = alcohol, y = residual.sugar, color = 'High Quality'), 
+             data = highquality, alpha = 0.33) +
+  geom_point(aes(x = alcohol, y = residual.sugar, color = 'Low Quality'), 
+             data = lowquality, alpha = 0.21) +
+  scale_color_manual("",
+                     values = c("High Quality"="darkorange4", 
+                                "Low Quality"="blue")) +
+  geom_smooth(aes(x = alcohol, y = residual.sugar, 
+                  color = 'High Quality'),
+              data = highquality, se = FALSE) +
+  geom_smooth(aes(x = alcohol, y = residual.sugar, 
+                  color = 'Low Quality'),
+              data = lowquality, se = FALSE)
+
+# Total Sulfur Dioxide Plots and Correlation
+print('Total Sulfur Dioxide')
+al.tsd
+print('Correlation of Total Sulfur Dioxide and Alcohol in High Quality Wine')
+cor(highquality$total.sulfur.dioxide, highquality$alcohol)
+print('Correlation of Total Sulfur Dioxide and Alcohol in Low Quality Wine')
+cor(lowquality$total.sulfur.dioxide, lowquality$alcohol)
+# Residual Sugar Plots, Summary and Correlation
+print('Residual Sugar')
+al.rs
+print('Correlation between Sugar and Alcohol in High Quality Wine')
+cor(highquality$residual.sugar, highquality$alcohol)
+print('Correlation between Sugar and Alcohol in Low Quality Wine')
+cor(lowquality$residual.sugar, lowquality$alcohol)
+```
+
+> The plot for total sulfur dioxide vs alcohol shows the change between quality
+levels in a similar way that we saw with chlorides. High quality wines once 
+again have a smaller range for their observed values. For the plot with sugar
+we see that the curves representing quality are quite similar. I think this
+tells us more about the relationship between sugar and alcohol than it does
+with quality. 
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+> The relationship I've observed between alcohol and chloride content seem
+to be the strongest pairing of variables. Chloride levels in high quality
+wine tend to stay within a certain low range. When combined with a high
+alcohol content they are generally seen within high quality wines. 
+
+### Were there any interesting or surprising interactions between features?
+
+> One interesting thing I saw was the alcohol vs sugar plot. The volatility 
+between both high and low quality wines is interesting. I was unsure
+whether this pattern was due to sugar not being a useful variable, or the fact
+that sugar was the most skewed of all observed variables. 
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_One}
+ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = alcohol), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = alcohol), # High Quality Jitter
+              data = highquality, alpha = 0.1) + 
+  geom_boxplot(aes(x = "2 - All", y = alcohol), # All Data Box Plot
+               data = wwq, color = 'darkred') +
+  geom_jitter(aes(x = '2 - All', y = alcohol), # All Data Jitter
+              data = wwq, alpha = 0.1) + 
+  geom_boxplot(aes(x = "1 - Low", y = alcohol), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') +
+  geom_jitter(aes(x = '1 - Low', y = alcohol), # Low Quality Jitter
+              data = lowquality, alpha = 0.1) + 
+  xlab('Quality Rating (Low = 3 - 5, High = 7 - 9)') +
+  ylab('Alcohol (% by Volume)') +
+  ggtitle('Alcohol Content in Different Quality Wine')
+```
+
+### Description One
+
+> This was the first instance found of a variable that affects quality. Alcohol
+is definitely one of the more useful variables in determining quality as well. 
+The visual difference in the distribution makes this plot very easy to read 
+and understand.
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Two}
+ch.b <- ggplot() +
+  geom_boxplot(aes(x = "3 - High", y = chlorides), # High Quality Box Plot
+               data = highquality, color = 'darkred') + 
+  geom_jitter(aes(x = '3 - High', y = chlorides), # High Quality Jitter
+              data = highquality, alpha = 0.05) + 
+  geom_boxplot(aes(x = "2 - All", y = chlorides), # All Data Box Plot
+               data = wwq, color = 'darkred') + 
+  geom_jitter(aes(x = '2 - All', y = chlorides), # All Data Jitter
+              data = wwq, alpha = 0.05) + 
+  geom_boxplot(aes(x = "1 - Low", y = chlorides), # Low Quality Box Plot
+               data = lowquality, color = 'darkred') + 
+  geom_jitter(aes(x = '1 - Low', y = chlorides), # Low Quality Jitter
+              data = lowquality, alpha = 0.05) + 
+  coord_cartesian(ylim = c(0, 0.1)) + 
+  xlab('Quality Rating (Low = 3 - 5, High = 7 - 9)') +
+  ylab('Chlorides (g / dm^3)') +
+  ggtitle('Chlorides in Different Quality Wine')
+
+al.ch <- ggplot(aes(x = alcohol, y = chlorides), data = wwq) +
+  geom_point(alpha = 0.1) +
+  coord_cartesian(ylim = c(0, 0.1)) +
+  geom_smooth(method = 'lm', se = FALSE) +
+  xlab('Alcohol (% by Volume)') +
+  ylab('Chlorides (g / dm^3)') +
+  ggtitle('Chlorides vs Alcohol')
+
+grid.arrange(ch.b, al.ch, ncol = 2)
+```
+
+### Description Two
+
+> These plots showed how useful chloride count is as well in determining 
+quality. Chloride count being correlated to Alcohol content also proved to be
+meaningful when going further in the analysis. 
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE, Plot_Three}
+ggplot() +
+  geom_point(aes(x = alcohol, y = chlorides, color = 'High Quality'), 
+             data = highquality, alpha = 0.33) +
+  geom_point(aes(x = alcohol, y = chlorides, color = 'Low Quality'), 
+             data = lowquality, alpha = 0.21) +
+  scale_color_manual("",
+                     values = c("High Quality"="darkorange4", 
+                                "Low Quality"="blue")) +
+  geom_smooth(aes(x = alcohol, y = chlorides, color = 'High Quality'),
+              data = highquality, se = FALSE) +
+  geom_smooth(aes(x = alcohol, y = chlorides, color = 'Low Quality'),
+              data = lowquality, se = FALSE) +
+  coord_cartesian(ylim = c(0.0125, 0.15)) +
+  xlab('Alcohol (% by Volume)') +
+  ylab('Chlorides (g / dm^3)') +
+  ggtitle('Chlorides vs Alcohol in High and Low Quality Wine')
+```
+
+### Description Three
+
+> This final plot shows a definite difference in values of chlorides and 
+alcohol and their affect on quality. All through out the analysis there
+were times where it seemed like high quality wines had more refined values in
+the observed variables. This plot is another good example of that.
+
+------
+
+# Reflection 2
+
+> I'm happy to have redone this project. I was happy with the work I did on the
+first submission but I was aware it needed some work. The feedback I received
+from the marker was very beneficial and helped to change some plots and
+analysis. I ended up changing much more (pretty much all of it) than I set
+out to do but I think there has been an overall improvement across all levels
+of analyses. 
+
+# Reflection 1
+
+> Getting through this project was a struggle to start but I'm happy to have
+finished. I tried exploring the data in a lot of different ways to start, 
+really trying to find something unique. I got back on track once I started
+treating it more like a project to learn R with and to practice analyzing
+data. There are other relationships I would continue to look into if I was
+to continue with this project. I think I'll realized early into the project
+how many different possible ways there is to explore data and I was a little
+discouraged. But going through the basics was enough to draw some general
+conclusions. 
+
+> I really like how simple it is in R to explore so many different patterns.
+Once I get more familiar writing R and using some packages I'm excited to see
+how quickly I can find unique patterns in new data. Something I would have 
+liked to explore more but didn't was the high quality wines having strict
+ranges on several variables. 
+
